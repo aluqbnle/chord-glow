@@ -48,16 +48,16 @@
       display: grid;
       grid-template-columns: 1fr;
       grid-template-areas:
-        "controls"
-        "keys"
+        "title"
+        "settings"
         "chords"
         "drums";
       gap: 10px;
       align-items: start;
     }
 
+    .title-bar,
     .controls,
-    .key-row,
     .pad-section {
       background: var(--panel);
       border: 1px solid rgba(255, 255, 255, 0.08);
@@ -66,20 +66,52 @@
       box-shadow: 0 18px 48px var(--shadow);
     }
 
+    .title-bar {
+      grid-area: title;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+    }
+
+    .app-title {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.04em;
+      white-space: nowrap;
+    }
+
+    .settings-btn {
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.07);
+      color: var(--text);
+      font: inherit;
+      font-size: 13px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      white-space: nowrap;
+      flex: 0 0 auto;
+    }
+
+    .settings-btn.active {
+      background: linear-gradient(135deg, rgba(255, 179, 107, 0.36), rgba(134, 217, 255, 0.24));
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
     .controls {
-      grid-area: controls;
+      grid-area: settings;
       padding: 10px;
       display: grid;
       gap: 10px;
     }
 
     .key-row {
-      grid-area: keys;
       display: flex;
-      gap: 8px;
+      gap: 6px;
       overflow-x: auto;
-      padding: 10px;
       scrollbar-width: none;
+      padding-bottom: 4px;
     }
 
     .key-row::-webkit-scrollbar {
@@ -87,13 +119,14 @@
     }
 
     .key-button {
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      background: rgba(255, 255, 255, 0.06);
-      color: var(--text);
-      padding: 6px 10px;
+      padding: 10px 14px;
+      font-size: 14px;
+      min-height: 44px;
       border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
       font: inherit;
-      font-size: 13px;
       white-space: nowrap;
       flex: 0 0 auto;
     }
@@ -104,15 +137,22 @@
     }
 
     .pad-section {
-      grid-area: chords;
       padding: 10px;
       display: grid;
       gap: 10px;
     }
 
+    #chord-section {
+      grid-area: chords;
+    }
+
+    #drum-section {
+      grid-area: drums;
+    }
+
     .section-head {
       display: grid;
-      gap: 4px;
+      gap: 6px;
     }
 
     .section-label {
@@ -120,6 +160,34 @@
       letter-spacing: 0.12em;
       text-transform: uppercase;
       color: var(--muted);
+    }
+
+    .settings-stack {
+      display: grid;
+      gap: 8px;
+    }
+
+    .setting-row {
+      display: grid;
+      gap: 6px;
+      padding: 8px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .setting-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      gap: 8px;
+    }
+
+    .setting-subvalue {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
     }
 
     .transport {
@@ -157,65 +225,11 @@
       color: var(--muted);
     }
 
-    .transport.drum {
-      grid-template-columns: repeat(3, 1fr);
-    }
-
     .mini-panel {
       padding: 8px;
       border-radius: 18px;
       background: rgba(255, 255, 255, 0.05);
       border: 1px solid rgba(255, 255, 255, 0.06);
-    }
-
-    .mixer {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 8px;
-    }
-
-    .channel {
-      display: grid;
-      justify-items: center;
-      align-content: start;
-      gap: 6px;
-      min-height: 86px;
-      text-align: center;
-    }
-
-    .channel-value {
-      min-height: 22px;
-      display: grid;
-      align-content: center;
-      font-size: 16px;
-      font-weight: 700;
-      letter-spacing: -0.05em;
-      line-height: 1;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      width: 100%;
-    }
-
-    .channel-caption {
-      font-size: 9px;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-    }
-
-    .fader-wrap {
-      height: 72px;
-      width: 34px;
-      display: grid;
-      place-items: center;
-    }
-
-    .fader {
-      width: 72px;
-      margin: 0;
-      transform: rotate(-90deg);
-      accent-color: var(--accent-2);
     }
 
     .slider-pair {
@@ -242,14 +256,12 @@
     }
 
     .pads {
-      grid-area: pads;
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 8px;
     }
 
     .pads.drums {
-      grid-area: drums;
       grid-template-columns: repeat(3, 1fr);
     }
 
@@ -330,26 +342,14 @@
         gap: 8px;
       }
 
-      .mini-panel {
+      .mini-panel,
+      .setting-row {
         padding: 7px;
       }
 
       .transport button {
         min-height: 46px;
         padding: 10px 6px;
-      }
-
-      .channel {
-        min-height: 78px;
-        gap: 4px;
-      }
-
-      .fader-wrap {
-        height: 60px;
-      }
-
-      .fader {
-        width: 60px;
       }
 
       .pad {
@@ -363,7 +363,9 @@
       background: var(--panel-strong);
       color: var(--text);
       white-space: nowrap;
-      justify-self: start;
+      font-size: 12px;
+      line-height: 1;
+      flex: 0 0 auto;
     }
 
     .tap-button {
@@ -387,44 +389,48 @@
 </head>
 <body>
   <main class="app">
-    <section class="controls">
-      <div>
-        <div class="mini-panel mixer">
-          <div class="channel">
-            <div class="channel-caption">Voice</div>
-            <div class="channel-value" id="voice-value">Harmo</div>
-            <div class="fader-wrap">
-              <input class="fader" id="voice-fader" type="range" min="0" max="200" step="1" value="0">
-            </div>
-            <div class="channel-caption" id="voice-label">airy</div>
-          </div>
+    <header class="title-bar">
+      <span class="app-title">Chord Glow</span>
+      <span class="pill" id="status">standby</span>
+      <button id="settings-toggle" class="settings-btn" type="button">⚙ Settings</button>
+    </header>
 
-          <div class="channel">
-            <div class="channel-caption">Tone</div>
-            <div class="channel-value" id="tone-value">Warm</div>
-            <div class="fader-wrap">
-              <input class="fader" id="tone-fader" type="range" min="0" max="100" step="1" value="0">
-            </div>
-            <div class="channel-caption" id="tone-label">soft</div>
+    <section class="controls" id="settings-panel" style="display: none;">
+      <div class="settings-stack">
+        <div class="setting-row">
+          <div class="setting-header">
+            <span>Voice</span>
+            <span id="voice-value">Harmo</span>
           </div>
+          <input id="voice-fader" type="range" min="0" max="200" step="1" value="0">
+          <div class="setting-subvalue" id="voice-label">airy</div>
+        </div>
 
-          <div class="channel">
-            <div class="channel-caption">Octave</div>
-            <div class="channel-value" id="octave-value">Base</div>
-            <div class="fader-wrap">
-              <input class="fader" id="octave-fader" type="range" min="-120" max="120" step="1" value="0">
-            </div>
-            <div class="channel-caption" id="octave-label">0 semitones</div>
+        <div class="setting-row">
+          <div class="setting-header">
+            <span>Tone</span>
+            <span id="tone-value">Warm</span>
           </div>
+          <input id="tone-fader" type="range" min="0" max="100" step="1" value="0">
+          <div class="setting-subvalue" id="tone-label">soft</div>
+        </div>
 
-          <div class="channel">
-            <div class="channel-caption">Loop</div>
-            <div class="channel-value" id="loop-length-value">4</div>
-            <div class="fader-wrap">
-              <input class="fader" id="loop-length-wheel" type="range" min="0" max="3" step="1" value="1">
-            </div>
-            <div class="channel-caption" id="loop-length-label">beats</div>
+        <div class="setting-row">
+          <div class="setting-header">
+            <span>Octave</span>
+            <span id="octave-value">Base</span>
           </div>
+          <input id="octave-fader" type="range" min="-120" max="120" step="1" value="0">
+          <div class="setting-subvalue" id="octave-label">0 semitones</div>
+        </div>
+
+        <div class="setting-row">
+          <div class="setting-header">
+            <span>Loop Length</span>
+            <span id="loop-length-value">4</span>
+          </div>
+          <input id="loop-length-wheel" type="range" min="0" max="3" step="1" value="1">
+          <div class="setting-subvalue" id="loop-length-label">beats</div>
         </div>
       </div>
 
@@ -467,18 +473,21 @@
       </div>
     </section>
 
-    <div class="key-row" id="key-row"></div>
-
-    <section class="pad-section">
+    <section class="pad-section" id="chord-section">
       <div class="section-head">
         <div class="section-label">Chord Pads</div>
         <div class="section-label">Hold for sustain · Multi-touch OK</div>
-        <span class="pill" id="status">standby</span>
+        <div class="key-row" id="key-row"></div>
       </div>
       <section class="pads" id="pads"></section>
     </section>
 
-    <section class="pads drums" id="drum-pads"></section>
+    <section class="pad-section" id="drum-section">
+      <div class="section-head">
+        <div class="section-label">Drums</div>
+      </div>
+      <div class="pads drums" id="drum-pads"></div>
+    </section>
   </main>
 
   <script>
@@ -1397,6 +1406,14 @@
     renderDrumPads();
     setRootShift(0);
     updateTempoDisplay();
+
+    document.getElementById('settings-toggle').addEventListener('click', () => {
+      const panel = document.getElementById('settings-panel');
+      const btn = document.getElementById('settings-toggle');
+      const isOpen = panel.style.display !== 'none' && panel.style.display !== '';
+      panel.style.display = isOpen ? 'none' : 'grid';
+      btn.classList.toggle('active', !isOpen);
+    });
   </script>
 </body>
 </html>

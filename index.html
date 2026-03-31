@@ -159,36 +159,6 @@
       letter-spacing: -0.03em;
     }
 
-    .key-row {
-      display: flex;
-      gap: 6px;
-      overflow-x: auto;
-      scrollbar-width: none;
-      padding-bottom: 4px;
-    }
-
-    .key-row::-webkit-scrollbar {
-      display: none;
-    }
-
-    .key-button {
-      padding: 10px 14px;
-      font-size: 14px;
-      min-height: 44px;
-      border-radius: 999px;
-      border: 1px solid rgba(255,255,255,0.1);
-      background: rgba(255,255,255,0.06);
-      color: var(--text);
-      font: inherit;
-      white-space: nowrap;
-      flex: 0 0 auto;
-    }
-
-    .key-button.active {
-      background: linear-gradient(135deg, rgba(255, 179, 107, 0.36), rgba(134, 217, 255, 0.24));
-      border-color: rgba(255, 255, 255, 0.2);
-    }
-
     .pad-section {
       padding: 10px;
       display: grid;
@@ -206,6 +176,44 @@
     .section-head {
       display: grid;
       gap: 6px;
+    }
+
+    .key-strip {
+      display: grid;
+      gap: 6px;
+      padding: 0 0 8px;
+    }
+
+    .key-strip-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+
+    #key-name {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.04em;
+      color: var(--accent);
+    }
+
+    #key-slider {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    .key-markers {
+      display: flex;
+      justify-content: space-between;
+      padding: 0 2px;
+    }
+
+    .key-markers span {
+      font-size: 9px;
+      color: var(--muted);
+      letter-spacing: 0.03em;
+      flex: 1;
+      text-align: center;
     }
 
     .chord-strip {
@@ -239,6 +247,36 @@
       font-size: 10px;
       color: var(--muted);
       letter-spacing: 0.04em;
+    }
+
+    .tension-row {
+      display: flex;
+      gap: 8px;
+      padding: 4px 0 8px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .tension-row::-webkit-scrollbar { display: none; }
+
+    .tension-chip {
+      flex: 0 0 auto;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 999px;
+      padding: 8px 16px;
+      min-height: 38px;
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      font: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      transition: background 120ms ease, border-color 120ms ease;
+    }
+
+    .tension-chip.active {
+      background: var(--chip-color);
+      border-color: rgba(255,255,255,0.25);
     }
 
     .section-label {
@@ -579,8 +617,16 @@
       <div class="section-head">
         <div class="section-label">Chord Pads</div>
         <div class="section-label">Hold for sustain · Multi-touch OK</div>
-        <div class="key-row" id="key-row"></div>
+        <div class="key-strip">
+          <div class="key-strip-header">
+            <span class="section-label">Key</span>
+            <span id="key-name">C</span>
+          </div>
+          <input id="key-slider" type="range" min="0" max="11" step="1" value="0">
+          <div class="key-markers" id="key-markers"></div>
+        </div>
       </div>
+      <div id="tension-row" class="tension-row"></div>
       <section class="pads" id="pads"></section>
     </section>
 
@@ -644,11 +690,8 @@
       { id: "em7", label: "Em7", key: "Rush", notes: [52, 55, 59, 62] }
     ];
 
-    const noteName = (midi) => {
-      const names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-      return names[midi % 12];
-    };
-    const rootNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+    const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+    const noteName = (midi) => NOTE_NAMES[midi % 12];
 
     const voiceFader = document.getElementById("voice-fader");
     const voiceValue = document.getElementById("voice-value");
@@ -673,7 +716,9 @@
     const tempoTapButton = document.getElementById("tempo-tap");
     const tempoValue = document.getElementById("tempo-value");
     const drumPadsRoot = document.getElementById("drum-pads");
-    const keyRow = document.getElementById("key-row");
+    const keySlider = document.getElementById("key-slider");
+    const keyNameEl = document.getElementById("key-name");
+    const keyMarkersEl = document.getElementById("key-markers");
 
     const loopLengths = [2, 4, 8, 16];
     const tones = [
@@ -684,6 +729,14 @@
       { id: "base", name: "Base", shortName: "Base", shift: 0, hint: "0 semitones" },
       { id: "up", name: "+8va", shortName: "+8va", shift: 12, hint: "+12 semitones" }
     ];
+    const tensions = [
+      { id: "add9", label: "+9", semitones: 14, color: "rgba(134,217,255,0.28)" },
+      { id: "sus4", label: "sus", semitones: 5, color: "rgba(167,139,250,0.28)" },
+      { id: "lyd", label: "#11", semitones: 18, color: "rgba(255,220,60,0.28)" },
+      { id: "add13", label: "+13", semitones: 21, color: "rgba(74,222,128,0.28)" },
+      { id: "b9", label: "b9", semitones: 13, color: "rgba(248,113,113,0.28)" }
+    ];
+    const activeTensions = new Set();
 
     let voiceMorph = 0;
     let chordMorph = 0;
@@ -890,6 +943,16 @@
       return filtered.length ? filtered : [notes[0], notes[2] ?? notes[0]];
     }
 
+    function applyTensions(notes) {
+      if (!activeTensions.size) return notes;
+      const root = notes[0];
+      const extra = [...activeTensions].map((id) => {
+        const tension = tensions.find((item) => item.id === id);
+        return tension ? root + tension.semitones : null;
+      }).filter(Boolean);
+      return [...notes, ...extra];
+    }
+
     function getLoopDuration() {
       return loopLengthBeats * (60 / tempoBpm);
     }
@@ -962,7 +1025,7 @@
         release: voice.release
       };
 
-      const safeNotes = getCompatibleNotes(chord.notes);
+      const safeNotes = applyTensions(getCompatibleNotes(chord.notes));
       bundle.notePitchClasses = safeNotes.map((midi) => (midi + Math.round(octaveShift + rootShift) + 120) % 12);
 
       safeNotes.forEach((midi, noteIndex) => {
@@ -983,7 +1046,7 @@
           lfo.connect(lfoGain);
           lfoGain.connect(osc.detune);
 
-          pan.pan.value = ((noteIndex / chord.notes.length) - 0.4) * 0.8;
+          pan.pan.value = ((noteIndex / safeNotes.length) - 0.4) * 0.8;
 
           gain.gain.setValueAtTime(0.0001, now);
           gain.gain.exponentialRampToValueAtTime(0.12 / (layerIndex + 1), now + voice.attack);
@@ -1011,8 +1074,10 @@
       lowpass.frequency.cancelScheduledValues(now);
       lowpass.frequency.linearRampToValueAtTime(tone.filter + voice.filter * 0.35, now + 0.03);
       const bundle = { oscillators: [], gains: [], lfos: [], release: voice.release, stopped: false };
+      const morphedWithTensions = applyTensions(floatNotes);
+      bundle.notePitchClasses = morphedWithTensions.map((midi) => (midi + Math.round(octaveShift + rootShift) + 120) % 12);
 
-      floatNotes.forEach((floatMidi, noteIndex) => {
+      morphedWithTensions.forEach((floatMidi, noteIndex) => {
         voice.waves.forEach((wave, layerIndex) => {
           const osc = audioContext.createOscillator();
           const gain = audioContext.createGain();
@@ -1030,7 +1095,7 @@
           lfo.connect(lfoGain);
           lfoGain.connect(osc.detune);
 
-          pan.pan.value = ((noteIndex / floatNotes.length) - 0.4) * 0.8;
+          pan.pan.value = ((noteIndex / morphedWithTensions.length) - 0.4) * 0.8;
 
           gain.gain.setValueAtTime(0.0001, now);
           gain.gain.exponentialRampToValueAtTime(0.12 / (layerIndex + 1), now + voice.attack);
@@ -1053,7 +1118,9 @@
       if (!bundle || bundle.stopped || !audioContext) return;
       const now = audioContext.currentTime;
       let oscIndex = 0;
-      floatNotes.forEach((floatMidi) => {
+      const morphedWithTensions = applyTensions(floatNotes);
+      bundle.notePitchClasses = morphedWithTensions.map((midi) => (midi + Math.round(octaveShift + rootShift) + 120) % 12);
+      morphedWithTensions.forEach((floatMidi) => {
         const voiceProfile = getVoiceProfile();
         voiceProfile.waves.forEach(() => {
           const item = bundle.oscillators[oscIndex];
@@ -1380,12 +1447,14 @@
 
     function setRootShift(value) {
       rootShift = value;
-      Array.from(keyRow.children).forEach((button, index) => {
-        button.classList.toggle("active", index === value);
-      });
+      keySlider.value = String(value);
+      keyNameEl.textContent = NOTE_NAMES[value];
       activePads.forEach((entry) => applyOctaveToBundle(entry.bundle));
-      applyOctaveToBundle(chordMorphBundle);
-      status.textContent = `key ${rootNames[value]}`;
+      if (chordMorphBundle && !chordMorphBundle.stopped) {
+        const profile = getChordProfile(chordMorph);
+        updateMorphChordFrequencies(chordMorphBundle, profile.notes);
+      }
+      status.textContent = `key ${NOTE_NAMES[value]}`;
     }
 
     function updateTempoDisplay() {
@@ -1474,16 +1543,29 @@
       });
     }
 
-    function renderKeyButtons() {
-      rootNames.forEach((name, index) => {
-        const button = document.createElement("button");
-        button.className = "key-button";
-        button.type = "button";
-        button.textContent = name;
-        button.addEventListener("click", () => {
-          setRootShift(index);
+    function renderTensionChips() {
+      const row = document.getElementById("tension-row");
+      tensions.forEach((tension) => {
+        const btn = document.createElement("button");
+        btn.className = "tension-chip";
+        btn.dataset.id = tension.id;
+        btn.textContent = tension.label;
+        btn.style.setProperty("--chip-color", tension.color);
+        btn.addEventListener("click", () => {
+          if (activeTensions.has(tension.id)) {
+            activeTensions.delete(tension.id);
+            btn.classList.remove("active");
+          } else {
+            activeTensions.add(tension.id);
+            btn.classList.add("active");
+          }
+          if (chordMorphBundle && !chordMorphBundle.stopped) {
+            const profile = getChordProfile(chordMorph);
+            stopVoiceBundle(chordMorphBundle);
+            chordMorphBundle = startMorphChord(profile.notes);
+          }
         });
-        keyRow.appendChild(button);
+        row.appendChild(btn);
       });
     }
 
@@ -1577,6 +1659,21 @@
       await ensureAudio();
       toggleDrums();
     });
+    NOTE_NAMES.forEach((name) => {
+      const span = document.createElement("span");
+      span.textContent = name;
+      keyMarkersEl.appendChild(span);
+    });
+    keySlider.addEventListener("input", () => {
+      rootShift = Number(keySlider.value);
+      keyNameEl.textContent = NOTE_NAMES[rootShift];
+      if (chordMorphBundle && !chordMorphBundle.stopped) {
+        const profile = getChordProfile(chordMorph);
+        updateMorphChordFrequencies(chordMorphBundle, profile.notes);
+      }
+      activePads.forEach((entry) => applyOctaveToBundle(entry.bundle));
+      status.textContent = `key ${NOTE_NAMES[rootShift]}`;
+    });
 
     setVoiceMorph(0);
     setToneMorph(0);
@@ -1587,8 +1684,8 @@
     setButtonVisual(loopClearButton, "✕", "Clear");
     loopLengthWheel.value = String(loopLengths.indexOf(loopLengthBeats));
     applyLoopLength(loopLengthBeats);
-    renderKeyButtons();
     renderPads();
+    renderTensionChips();
     renderDrumPads();
     const markersEl = document.getElementById("chord-strip-markers");
     chords.forEach((chord) => {

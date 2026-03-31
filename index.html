@@ -110,7 +110,7 @@
     .quick-bar {
       grid-area: quickbar;
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr 1fr 1fr;
       gap: 8px;
     }
 
@@ -129,6 +129,32 @@
 
     .quick-bar button.active {
       background: linear-gradient(135deg, rgba(255, 179, 107, 0.36), rgba(134, 217, 255, 0.24));
+    }
+
+    .quick-bar .tap-button {
+      border: 0;
+      border-radius: 18px;
+      padding: 13px 8px;
+      background: rgba(255, 255, 255, 0.08);
+      display: grid;
+      justify-items: center;
+      gap: 4px;
+      min-height: 52px;
+      width: 100%;
+      font: inherit;
+      color: var(--text);
+    }
+
+    .quick-bar .tap-button span:first-child {
+      font-size: 20px;
+      line-height: 1;
+    }
+
+    .quick-bar .tap-button span:last-child {
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
     }
 
     .key-row {
@@ -467,6 +493,10 @@
         <span class="transport-icon">◌</span>
         <span class="transport-label">Drum</span>
       </button>
+      <button class="tap-button" id="tempo-tap" type="button">
+        <span>Tap BPM</span>
+        <span id="tempo-value">100 BPM</span>
+      </button>
     </div>
 
     <section class="controls" id="settings-panel" style="display: none;">
@@ -522,19 +552,13 @@
         </div>
       </div>
 
-      <div class="slider-pair">
+      <div>
         <div class="slider-row mini-panel">
           <div class="slider-header">
             <span>Drive</span>
             <span id="drive-value">clean</span>
           </div>
           <input id="drive" type="range" min="0" max="100" value="18">
-        </div>
-        <div class="slider-row mini-panel">
-          <button class="tap-button" id="tempo-tap" type="button">
-            <span>Tap BPM</span>
-            <span id="tempo-value">100 BPM</span>
-          </button>
         </div>
       </div>
     </section>

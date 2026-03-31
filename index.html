@@ -1,0 +1,1191 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <title>Chord Glow</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg-1: #131217;
+      --bg-2: #312438;
+      --panel: rgba(255, 255, 255, 0.08);
+      --panel-strong: rgba(255, 255, 255, 0.16);
+      --text: #f6f3eb;
+      --muted: rgba(246, 243, 235, 0.72);
+      --accent: #ffb36b;
+      --accent-2: #86d9ff;
+      --shadow: rgba(0, 0, 0, 0.28);
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Avenir Next", "Helvetica Neue", sans-serif;
+      background:
+        radial-gradient(circle at top, rgba(255, 179, 107, 0.22), transparent 32%),
+        radial-gradient(circle at 20% 80%, rgba(134, 217, 255, 0.18), transparent 30%),
+        linear-gradient(180deg, var(--bg-2), var(--bg-1));
+      color: var(--text);
+    }
+
+    .app {
+      width: min(100%, 430px);
+      min-height: 100vh;
+      margin: 0 auto;
+      padding:
+        max(20px, env(safe-area-inset-top))
+        18px
+        max(20px, env(safe-area-inset-bottom))
+        18px;
+      display: grid;
+      grid-template-rows: auto auto 1fr auto;
+      gap: 16px;
+    }
+
+    .controls,
+    .meta {
+      background: var(--panel);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 24px;
+      backdrop-filter: blur(18px);
+      box-shadow: 0 18px 48px var(--shadow);
+    }
+
+    .controls {
+      padding: 14px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .section-label {
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .transport {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+
+    .transport button {
+      border: 0;
+      border-radius: 18px;
+      padding: 13px 8px;
+      color: var(--text);
+      font: inherit;
+      background: rgba(255, 255, 255, 0.08);
+      display: grid;
+      justify-items: center;
+      gap: 4px;
+      min-height: 62px;
+    }
+
+    .transport button.active {
+      background: linear-gradient(135deg, rgba(255, 179, 107, 0.36), rgba(134, 217, 255, 0.24));
+    }
+
+    .transport-icon {
+      font-size: 20px;
+      line-height: 1;
+    }
+
+    .transport-label {
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .transport.drum {
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    .mini-panel {
+      padding: 12px;
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .mixer {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+    }
+
+    .channel {
+      display: grid;
+      justify-items: center;
+      align-content: start;
+      gap: 10px;
+      min-height: 196px;
+      text-align: center;
+    }
+
+    .channel-value {
+      min-height: 40px;
+      display: grid;
+      align-content: center;
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.05em;
+      line-height: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      width: 100%;
+    }
+
+    .channel-caption {
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    .fader-wrap {
+      height: 160px;
+      width: 48px;
+      display: grid;
+      place-items: center;
+    }
+
+    .fader {
+      width: 160px;
+      margin: 0;
+      transform: rotate(-90deg);
+      accent-color: var(--accent-2);
+    }
+
+    .slider-pair {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .slider-row {
+      display: grid;
+      gap: 8px;
+    }
+
+    .slider-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 14px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    .pads {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+
+    .pads.drums {
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    .pad {
+      position: relative;
+      min-height: 118px;
+      border: 0;
+      border-radius: 24px;
+      padding: 16px;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.05)),
+        rgba(255, 255, 255, 0.05);
+      color: var(--text);
+      text-align: left;
+      box-shadow: 0 14px 36px var(--shadow);
+      overflow: hidden;
+      transition: transform 100ms ease, box-shadow 140ms ease, border-color 140ms ease;
+      border: 1px solid transparent;
+      touch-action: manipulation;
+    }
+
+    .pad::after {
+      content: "";
+      position: absolute;
+      inset: auto -20% -35% auto;
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(255, 255, 255, 0.18), transparent 65%);
+      pointer-events: none;
+    }
+
+    .pad.active {
+      transform: scale(0.98);
+      box-shadow: 0 10px 18px var(--shadow);
+      border-color: rgba(255, 255, 255, 0.22);
+    }
+
+    .pad-key {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .pad-title {
+      margin-top: 18px;
+      font-size: 28px;
+      line-height: 1;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+    }
+
+    .pad-notes {
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .meta {
+      padding: 14px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .pill {
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: var(--panel-strong);
+      color: var(--text);
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section class="controls">
+      <div>
+        <div class="mini-panel mixer">
+          <div class="channel">
+            <div class="channel-caption">Voice</div>
+            <div class="channel-value" id="voice-value">Harmo</div>
+            <div class="fader-wrap">
+              <input class="fader" id="voice-fader" type="range" min="0" max="200" step="1" value="0">
+            </div>
+            <div class="channel-caption" id="voice-label">airy</div>
+          </div>
+
+          <div class="channel">
+            <div class="channel-caption">Tone</div>
+            <div class="channel-value" id="tone-value">Warm</div>
+            <div class="fader-wrap">
+              <input class="fader" id="tone-fader" type="range" min="0" max="100" step="1" value="0">
+            </div>
+            <div class="channel-caption" id="tone-label">soft</div>
+          </div>
+
+          <div class="channel">
+            <div class="channel-caption">Octave</div>
+            <div class="channel-value" id="octave-value">Base</div>
+            <div class="fader-wrap">
+              <input class="fader" id="octave-fader" type="range" min="-120" max="120" step="1" value="0">
+            </div>
+            <div class="channel-caption" id="octave-label">0 semitones</div>
+          </div>
+
+          <div class="channel">
+            <div class="channel-caption">Loop</div>
+            <div class="channel-value" id="loop-length-value">4</div>
+            <div class="fader-wrap">
+              <input class="fader" id="loop-length-wheel" type="range" min="0" max="3" step="1" value="1">
+            </div>
+            <div class="channel-caption" id="loop-length-label">beats</div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-label">Transport</div>
+        <div class="transport">
+          <button id="loop-arm" aria-label="Loop Record">
+            <span class="transport-icon">◉</span>
+            <span class="transport-label">Rec</span>
+          </button>
+          <button id="drum-toggle" aria-label="Drums">
+            <span class="transport-icon">◌</span>
+            <span class="transport-label">Drum</span>
+          </button>
+          <button id="audio-record" aria-label="Audio Record">
+            <span class="transport-icon">◎</span>
+            <span class="transport-label">Audio</span>
+          </button>
+          <button id="loop-clear" aria-label="Clear Loop">
+            <span class="transport-icon">✕</span>
+            <span class="transport-label">Clear</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="slider-pair">
+        <div class="slider-row mini-panel">
+          <div class="slider-header">
+            <span>Drive</span>
+            <span id="drive-value">clean</span>
+          </div>
+          <input id="drive" type="range" min="0" max="100" value="18">
+        </div>
+        <div class="slider-row mini-panel">
+          <div class="slider-header">
+            <span>Tempo</span>
+            <span id="tempo-value">100 BPM</span>
+          </div>
+          <input id="tempo" type="range" min="50" max="180" value="100">
+        </div>
+      </div>
+    </section>
+
+    <section class="pads" id="pads"></section>
+
+    <section class="pads drums" id="drum-pads"></section>
+
+    <section class="meta">
+      <span>長押しでサステイン / 下でドラムも叩けます</span>
+      <span class="pill" id="status">standby</span>
+    </section>
+  </main>
+
+  <script>
+    const voices = [
+      {
+        id: "harmonica",
+        name: "Harmonica",
+        shortName: "HRM",
+        hint: "airy",
+        color: "linear-gradient(160deg, rgba(255, 186, 102, 0.36), rgba(160, 111, 62, 0.18))",
+        waves: ["sawtooth", "triangle", "triangle"],
+        detune: [-4, 3, 8],
+        attack: 0.03,
+        release: 0.34,
+        filter: 2400,
+        vibrato: 5
+      },
+      {
+        id: "organ",
+        name: "Fan Organ",
+        shortName: "ORG",
+        hint: "warped",
+        color: "linear-gradient(160deg, rgba(121, 203, 255, 0.34), rgba(93, 109, 181, 0.18))",
+        waves: ["square", "triangle", "triangle"],
+        detune: [-6, 2, 11],
+        attack: 0.02,
+        release: 0.44,
+        filter: 1800,
+        vibrato: 2.6
+      },
+      {
+        id: "fuzz",
+        name: "Fuzz Guitar",
+        shortName: "FZZ",
+        hint: "bite",
+        color: "linear-gradient(160deg, rgba(255, 124, 124, 0.38), rgba(112, 37, 48, 0.18))",
+        waves: ["sawtooth", "sawtooth", "triangle"],
+        detune: [-8, 0, 6],
+        attack: 0.01,
+        release: 0.26,
+        filter: 1500,
+        vibrato: 1.2
+      }
+    ];
+
+    const chords = [
+      { id: "cmaj7", label: "Cmaj7", key: "Lift", notes: [60, 64, 67, 71] },
+      { id: "am7", label: "Am7", key: "Drift", notes: [57, 60, 64, 67] },
+      { id: "fmaj7", label: "Fmaj7", key: "Bloom", notes: [53, 57, 60, 64] },
+      { id: "g6", label: "G6", key: "Spark", notes: [55, 59, 62, 64] },
+      { id: "dm7", label: "Dm7", key: "Haze", notes: [50, 53, 57, 60] },
+      { id: "em7", label: "Em7", key: "Rush", notes: [52, 55, 59, 62] }
+    ];
+
+    const noteName = (midi) => {
+      const names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+      return names[midi % 12];
+    };
+
+    const voiceFader = document.getElementById("voice-fader");
+    const voiceValue = document.getElementById("voice-value");
+    const voiceLabel = document.getElementById("voice-label");
+    const toneFader = document.getElementById("tone-fader");
+    const toneValue = document.getElementById("tone-value");
+    const toneLabel = document.getElementById("tone-label");
+    const octaveFader = document.getElementById("octave-fader");
+    const octaveValue = document.getElementById("octave-value");
+    const octaveLabel = document.getElementById("octave-label");
+    const padsRoot = document.getElementById("pads");
+    const driveInput = document.getElementById("drive");
+    const driveValue = document.getElementById("drive-value");
+    const status = document.getElementById("status");
+    const loopLengthWheel = document.getElementById("loop-length-wheel");
+    const loopLengthValue = document.getElementById("loop-length-value");
+    const loopLengthLabel = document.getElementById("loop-length-label");
+    const loopArmButton = document.getElementById("loop-arm");
+    const loopClearButton = document.getElementById("loop-clear");
+    const audioRecordButton = document.getElementById("audio-record");
+    const drumToggleButton = document.getElementById("drum-toggle");
+    const tempoInput = document.getElementById("tempo");
+    const tempoValue = document.getElementById("tempo-value");
+    const drumPadsRoot = document.getElementById("drum-pads");
+
+    const loopLengths = [2, 4, 8, 16];
+    const tones = [
+      { id: "warm", name: "Warm", shortName: "Warm", hint: "soft", filter: 1600, wet: 0.32 },
+      { id: "bright", name: "Bright", shortName: "Bright", hint: "lift", filter: 3600, wet: 0.18 }
+    ];
+    const octaves = [
+      { id: "base", name: "Base", shortName: "Base", shift: 0, hint: "0 semitones" },
+      { id: "up", name: "+8va", shortName: "+8va", shift: 12, hint: "+12 semitones" }
+    ];
+
+    let voiceMorph = 0;
+    let toneMorph = 0;
+    let octaveShift = 0;
+    let audioContext;
+    let masterGain;
+    let dryGain;
+    let lowpass;
+    let convolver;
+    let wetGain;
+    let waveshaper;
+    let mediaDest;
+    let mediaRecorder;
+    let audioChunks = [];
+    let loopStartTime = 0;
+    let loopLengthBeats = 4;
+    let pendingLoopLengthBeats = null;
+    let loopArmed = false;
+    let loopPlaying = false;
+    let loopTimer;
+    let loopGeneration = 0;
+    let loopEvents = [];
+    let activePads = new Map();
+    let activeDrums = new Map();
+    let tempoBpm = 100;
+    let drumsOn = false;
+    let drumStep = 0;
+    let nextDrumNoteTime = 0;
+    let animationFrameId;
+
+    function makeImpulse(seconds = 1.8, decay = 2.1) {
+      const rate = audioContext.sampleRate;
+      const length = rate * seconds;
+      const impulse = audioContext.createBuffer(2, length, rate);
+      for (let channel = 0; channel < 2; channel += 1) {
+        const data = impulse.getChannelData(channel);
+        for (let i = 0; i < length; i += 1) {
+          const n = (Math.random() * 2) - 1;
+          data[i] = n * Math.pow(1 - (i / length), decay);
+        }
+      }
+      return impulse;
+    }
+
+    function lerp(a, b, t) {
+      return a + ((b - a) * t);
+    }
+
+    function getVoiceProfile() {
+      const baseIndex = Math.min(voices.length - 1, Math.floor(voiceMorph));
+      const nextIndex = Math.min(voices.length - 1, baseIndex + 1);
+      const mix = Math.min(1, Math.max(0, voiceMorph - baseIndex));
+      const a = voices[baseIndex];
+      const b = voices[nextIndex];
+      return {
+        a,
+        b,
+        mix,
+        shortName: mix < 0.08 ? a.shortName : mix > 0.92 ? b.shortName : `${a.shortName}-${b.shortName}`,
+        hint: `${Math.round(mix * 100)}% morph`,
+        waves: a.waves.map((wave, index) => (mix < 0.5 ? wave : b.waves[index])),
+        detune: a.detune.map((value, index) => lerp(value, b.detune[index], mix)),
+        attack: lerp(a.attack, b.attack, mix),
+        release: lerp(a.release, b.release, mix),
+        filter: lerp(a.filter, b.filter, mix),
+        vibrato: lerp(a.vibrato, b.vibrato, mix)
+      };
+    }
+
+    function getToneProfile() {
+      return {
+        filter: lerp(tones[0].filter, tones[1].filter, toneMorph),
+        wet: lerp(tones[0].wet, tones[1].wet, toneMorph),
+        shortName: toneMorph < 0.08 ? tones[0].shortName : toneMorph > 0.92 ? tones[1].shortName : "MIX",
+        hint: `${Math.round(toneMorph * 100)}%`
+      };
+    }
+
+    function updateTone() {
+      if (!audioContext || !lowpass || !wetGain) {
+        return;
+      }
+      const voice = getVoiceProfile();
+      const tone = getToneProfile();
+      const now = audioContext.currentTime;
+      lowpass.frequency.cancelScheduledValues(now);
+      lowpass.frequency.linearRampToValueAtTime(tone.filter + voice.filter * 0.35, now + 0.05);
+      wetGain.gain.cancelScheduledValues(now);
+      wetGain.gain.linearRampToValueAtTime(tone.wet, now + 0.05);
+    }
+
+    function setButtonVisual(button, icon, label) {
+      button.innerHTML = `<span class="transport-icon">${icon}</span><span class="transport-label">${label}</span>`;
+    }
+
+    function setDrive(amount) {
+      const normalized = amount / 100;
+      const shaped = Math.pow(normalized, 2.2);
+      const k = 4 + shaped * 140;
+      const samples = 2048;
+      const curve = new Float32Array(samples);
+      for (let i = 0; i < samples; i += 1) {
+        const x = (i * 2) / samples - 1;
+        curve[i] = ((1 + k) * x) / (1 + (k * Math.abs(x)));
+      }
+      waveshaper.curve = curve;
+      waveshaper.oversample = "4x";
+      driveValue.textContent =
+        amount < 22 ? "clean" :
+        amount < 48 ? "edge" :
+        amount < 74 ? "crunch" : "fuzz";
+    }
+
+    async function ensureAudio() {
+      if (!audioContext) {
+        audioContext = new AudioContext();
+        masterGain = audioContext.createGain();
+        dryGain = audioContext.createGain();
+        lowpass = audioContext.createBiquadFilter();
+        convolver = audioContext.createConvolver();
+        wetGain = audioContext.createGain();
+        waveshaper = audioContext.createWaveShaper();
+
+        const voice = getVoiceProfile();
+        const tone = getToneProfile();
+        lowpass.type = "lowpass";
+        lowpass.frequency.value = tone.filter + voice.filter * 0.35;
+
+        convolver.buffer = makeImpulse();
+        dryGain.gain.value = 0.9;
+        wetGain.gain.value = tone.wet;
+        masterGain.gain.value = 0.76;
+        mediaDest = audioContext.createMediaStreamDestination();
+
+        lowpass.connect(waveshaper);
+        waveshaper.connect(dryGain);
+        waveshaper.connect(convolver);
+        convolver.connect(wetGain);
+        dryGain.connect(masterGain);
+        wetGain.connect(masterGain);
+        masterGain.connect(audioContext.destination);
+        masterGain.connect(mediaDest);
+
+        setDrive(Number(driveInput.value));
+        updateTone();
+      }
+
+      if (audioContext.state !== "running") {
+        await audioContext.resume();
+      }
+
+      status.textContent = "ready";
+    }
+
+    function midiToHz(midi) {
+      return 440 * Math.pow(2, (midi - 69) / 12);
+    }
+
+    function applyOctaveToBundle(bundle) {
+      if (!bundle) {
+        return;
+      }
+      bundle.oscillators.forEach((item) => {
+        item.osc.frequency.setTargetAtTime(midiToHz(item.midi + octaveShift), audioContext.currentTime, 0.02);
+      });
+    }
+
+    function getLoopDuration() {
+      return loopLengthBeats * (60 / tempoBpm);
+    }
+
+    function renderLoopLength(beats, pending = false) {
+      loopLengthValue.textContent = `${beats}`;
+      loopLengthLabel.textContent = pending ? "next" : beats === 1 ? "beat" : "beats";
+    }
+
+    function applyLoopLength(beats) {
+      loopLengthBeats = beats;
+      renderLoopLength(beats, false);
+    }
+
+    function setLoopLength(beats) {
+      if ((loopPlaying || drumsOn) && beats !== loopLengthBeats) {
+        pendingLoopLengthBeats = beats;
+        renderLoopLength(beats, true);
+        status.textContent = `${beats} beat next`;
+        return;
+      }
+
+      pendingLoopLengthBeats = null;
+      applyLoopLength(beats);
+      status.textContent = `${beats} beat loop`;
+      if (loopPlaying) {
+        scheduleLoop();
+      }
+      if (drumsOn && audioContext) {
+        nextDrumNoteTime = audioContext.currentTime + 0.05;
+        drumStep = 0;
+      }
+    }
+
+    function stopVoiceBundle(bundle) {
+      if (!audioContext || !bundle) {
+        return;
+      }
+
+      const now = audioContext.currentTime;
+      bundle.gains.forEach((gain) => {
+        gain.gain.cancelScheduledValues(now);
+        gain.gain.setValueAtTime(Math.max(0.0001, gain.gain.value), now);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + bundle.release);
+      });
+
+      bundle.oscillators.forEach((item) => item.osc.stop(now + bundle.release + 0.08));
+      bundle.lfos.forEach((lfo) => lfo.stop(now + bundle.release + 0.08));
+    }
+
+    function startChord(chord) {
+      if (!audioContext) {
+        return null;
+      }
+
+      const voice = getVoiceProfile();
+      const tone = getToneProfile();
+      const now = audioContext.currentTime;
+      lowpass.frequency.cancelScheduledValues(now);
+      lowpass.frequency.linearRampToValueAtTime(tone.filter + voice.filter * 0.35, now + 0.03);
+      const bundle = {
+        oscillators: [],
+        gains: [],
+        lfos: [],
+        release: voice.release
+      };
+
+      chord.notes.forEach((midi, noteIndex) => {
+        voice.waves.forEach((wave, layerIndex) => {
+          const osc = audioContext.createOscillator();
+          const gain = audioContext.createGain();
+          const pan = audioContext.createStereoPanner();
+          const lfo = audioContext.createOscillator();
+          const lfoGain = audioContext.createGain();
+
+          osc.type = wave;
+          osc.frequency.value = midiToHz(midi + octaveShift);
+          osc.detune.value = voice.detune[layerIndex] + (noteIndex * 1.5);
+
+          lfo.type = "sine";
+          lfo.frequency.value = 4.3 + (layerIndex * 0.4);
+          lfoGain.gain.value = voice.vibrato;
+          lfo.connect(lfoGain);
+          lfoGain.connect(osc.detune);
+
+          pan.pan.value = ((noteIndex / chord.notes.length) - 0.4) * 0.8;
+
+          gain.gain.setValueAtTime(0.0001, now);
+          gain.gain.exponentialRampToValueAtTime(0.12 / (layerIndex + 1), now + voice.attack);
+
+          osc.connect(gain);
+          gain.connect(pan);
+          pan.connect(lowpass);
+
+          osc.start(now);
+          lfo.start(now);
+          bundle.oscillators.push({ osc, midi });
+          bundle.gains.push(gain);
+          bundle.lfos.push(lfo);
+        });
+      });
+
+      return bundle;
+    }
+
+    function playTap(chord) {
+      const bundle = startChord(chord);
+      if (!bundle) {
+        return;
+      }
+      setTimeout(() => stopVoiceBundle(bundle), 220);
+    }
+
+    function recordLoopEvent(chordId) {
+      if (!loopArmed) {
+        return;
+      }
+
+      const now = audioContext.currentTime;
+      if (!loopStartTime) {
+        loopStartTime = now;
+      }
+
+      const offset = (now - loopStartTime) % getLoopDuration();
+      loopEvents.push({ chordId, offset });
+      status.textContent = `loop ${loopEvents.length}`;
+    }
+
+    function scheduleLoop() {
+      clearTimeout(loopTimer);
+      if (!loopPlaying || !loopEvents.length) {
+        return;
+      }
+
+      if (pendingLoopLengthBeats !== null) {
+        applyLoopLength(pendingLoopLengthBeats);
+        pendingLoopLengthBeats = null;
+      }
+
+      const cycle = getLoopDuration();
+      loopGeneration += 1;
+      const currentGeneration = loopGeneration;
+      loopEvents.forEach((event) => {
+        setTimeout(() => {
+          if (!loopPlaying || currentGeneration !== loopGeneration) {
+            return;
+          }
+          const chord = chords.find((item) => item.id === event.chordId);
+          if (chord) {
+            playTap(chord);
+          }
+        }, event.offset * 1000);
+      });
+
+      loopTimer = setTimeout(scheduleLoop, cycle * 1000);
+    }
+
+    function stopLoopPlayback() {
+      loopPlaying = false;
+      clearTimeout(loopTimer);
+      loopGeneration += 1;
+    }
+
+    function toggleLoopRecord() {
+      if (!loopArmed) {
+        stopLoopPlayback();
+        loopArmed = true;
+        loopStartTime = 0;
+        loopEvents = [];
+        loopArmButton.classList.add("active");
+        setButtonVisual(loopArmButton, "■", "Rec");
+        status.textContent = "recording loop";
+        return;
+      }
+
+      loopArmed = false;
+      loopArmButton.classList.remove("active");
+      setButtonVisual(loopArmButton, loopEvents.length ? "↺" : "◉", "Rec");
+      if (loopEvents.length) {
+        loopPlaying = true;
+        scheduleLoop();
+        status.textContent = "looping";
+      } else {
+        stopLoopPlayback();
+        status.textContent = "loop empty";
+      }
+    }
+
+    async function toggleAudioRecord() {
+      await ensureAudio();
+      if (!window.MediaRecorder) {
+        status.textContent = "no recorder";
+        return;
+      }
+
+      if (mediaRecorder && mediaRecorder.state === "recording") {
+        mediaRecorder.stop();
+        audioRecordButton.classList.remove("active");
+        setButtonVisual(audioRecordButton, "◎", "Audio");
+        status.textContent = "saved";
+        return;
+      }
+
+      audioChunks = [];
+      mediaRecorder = new MediaRecorder(mediaDest.stream);
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size) {
+          audioChunks.push(event.data);
+        }
+      };
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `chord-glow-${Date.now()}.webm`;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      };
+      mediaRecorder.start();
+      audioRecordButton.classList.add("active");
+      setButtonVisual(audioRecordButton, "■", "Audio");
+      status.textContent = "recording";
+    }
+
+    function playKick(time) {
+      const osc = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(150, time);
+      osc.frequency.exponentialRampToValueAtTime(46, time + 0.12);
+      gain.gain.setValueAtTime(0.0001, time);
+      gain.gain.exponentialRampToValueAtTime(0.9, time + 0.002);
+      gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.13);
+      osc.connect(gain);
+      gain.connect(masterGain);
+      osc.start(time);
+      osc.stop(time + 0.15);
+    }
+
+    function playSnare(time) {
+      const buffer = audioContext.createBuffer(1, audioContext.sampleRate * 0.18, audioContext.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < data.length; i += 1) {
+        data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+      }
+      const noise = audioContext.createBufferSource();
+      const noiseFilter = audioContext.createBiquadFilter();
+      const noiseGain = audioContext.createGain();
+      const body = audioContext.createOscillator();
+      const bodyGain = audioContext.createGain();
+
+      noise.buffer = buffer;
+      noiseFilter.type = "highpass";
+      noiseFilter.frequency.value = 1700;
+      noiseGain.gain.setValueAtTime(0.0001, time);
+      noiseGain.gain.exponentialRampToValueAtTime(0.42, time + 0.002);
+      noiseGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.16);
+
+      body.type = "triangle";
+      body.frequency.setValueAtTime(210, time);
+      body.frequency.exponentialRampToValueAtTime(130, time + 0.09);
+      bodyGain.gain.setValueAtTime(0.0001, time);
+      bodyGain.gain.exponentialRampToValueAtTime(0.18, time + 0.002);
+      bodyGain.gain.exponentialRampToValueAtTime(0.0001, time + 0.11);
+
+      noise.connect(noiseFilter);
+      noiseFilter.connect(noiseGain);
+      noiseGain.connect(masterGain);
+      body.connect(bodyGain);
+      bodyGain.connect(masterGain);
+
+      noise.start(time);
+      noise.stop(time + 0.18);
+      body.start(time);
+      body.stop(time + 0.12);
+    }
+
+    function playHat(time, open = false) {
+      const buffer = audioContext.createBuffer(1, audioContext.sampleRate * (open ? 0.34 : 0.08), audioContext.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < data.length; i += 1) {
+        data[i] = (Math.random() * 2 - 1);
+      }
+      const noise = audioContext.createBufferSource();
+      const filter = audioContext.createBiquadFilter();
+      const gain = audioContext.createGain();
+
+      noise.buffer = buffer;
+      filter.type = "highpass";
+      filter.frequency.value = open ? 5500 : 7000;
+      gain.gain.setValueAtTime(0.0001, time);
+      gain.gain.exponentialRampToValueAtTime(open ? 0.18 : 0.11, time + 0.001);
+      gain.gain.exponentialRampToValueAtTime(0.0001, time + (open ? 0.28 : 0.055));
+
+      noise.connect(filter);
+      filter.connect(gain);
+      gain.connect(masterGain);
+      noise.start(time);
+      noise.stop(time + (open ? 0.3 : 0.07));
+    }
+
+    function triggerDrum(kind, time = audioContext.currentTime) {
+      if (kind === "kick") {
+        playKick(time);
+      } else if (kind === "snare") {
+        playSnare(time);
+      } else {
+        playHat(time, kind === "openHat");
+      }
+    }
+
+    function scheduleDrumStep(step, time) {
+      if (pendingLoopLengthBeats !== null && step % (loopLengthBeats * 2) === 0) {
+        applyLoopLength(pendingLoopLengthBeats);
+        pendingLoopLengthBeats = null;
+      }
+
+      const beat = (step % 8) + 1;
+      const barStep = step % (loopLengthBeats * 2);
+      const barStart = barStep === 0;
+      const stepsPerCycle = loopLengthBeats * 2;
+      const pulseB = barStep === Math.floor(stepsPerCycle / 2);
+      const push = loopLengthBeats >= 8 && (barStep === stepsPerCycle - 3 || barStep === stepsPerCycle - 1);
+
+      if (barStart || pulseB || push) {
+        playKick(time);
+      }
+      if (beat === 3 || beat === 7) {
+        playSnare(time);
+      }
+      playHat(time, loopLengthBeats >= 8 && beat === 8);
+    }
+
+    function startDrumScheduler() {
+      if (!audioContext || !drumsOn) {
+        return;
+      }
+
+      nextDrumNoteTime = audioContext.currentTime + 0.05;
+      const scheduleAhead = 0.14;
+
+      const tick = () => {
+        if (!drumsOn || !audioContext) {
+          return;
+        }
+
+        while (nextDrumNoteTime < audioContext.currentTime + scheduleAhead) {
+          scheduleDrumStep(drumStep, nextDrumNoteTime);
+          nextDrumNoteTime += 60 / tempoBpm / 2;
+          drumStep += 1;
+        }
+
+        animationFrameId = requestAnimationFrame(tick);
+      };
+
+      cancelAnimationFrame(animationFrameId);
+      tick();
+    }
+
+    function stopDrumScheduler() {
+      cancelAnimationFrame(animationFrameId);
+    }
+
+    function toggleDrums() {
+      drumsOn = !drumsOn;
+      drumToggleButton.classList.toggle("active", drumsOn);
+      setButtonVisual(drumToggleButton, drumsOn ? "◈" : "◌", "Drum");
+      status.textContent = drumsOn ? "drums on" : "drums off";
+      if (drumsOn) {
+        drumStep = 0;
+        startDrumScheduler();
+      } else {
+        stopDrumScheduler();
+      }
+    }
+
+    function setVoiceMorph(value) {
+      voiceMorph = value;
+      const voice = getVoiceProfile();
+      voiceFader.value = String(Math.round(value * 100));
+      voiceValue.textContent = voice.shortName;
+      voiceLabel.textContent = voice.hint;
+      if (audioContext) {
+        updateTone();
+      }
+      status.textContent = "voice morph";
+    }
+
+    function setToneMorph(value) {
+      toneMorph = value;
+      const tone = getToneProfile();
+      toneFader.value = String(Math.round(value * 100));
+      toneValue.textContent = tone.shortName;
+      toneLabel.textContent = tone.hint;
+      if (audioContext) {
+        updateTone();
+      }
+      status.textContent = "tone morph";
+    }
+
+    function setOctaveShift(value) {
+      octaveShift = value;
+      octaveFader.value = String(Math.round(value * 10));
+      octaveValue.textContent = value === 0 ? "Base" : `${value > 0 ? "+" : ""}${value.toFixed(1)}`;
+      octaveLabel.textContent = `${Math.round(value * 10) / 10} st`;
+      activePads.forEach((entry) => applyOctaveToBundle(entry.bundle));
+      status.textContent = "pitch glide";
+    }
+
+    function bindPadPress(button, chord) {
+      const activate = async (event) => {
+        event.preventDefault();
+        await ensureAudio();
+        if (button.setPointerCapture && event.pointerId !== undefined) {
+          button.setPointerCapture(event.pointerId);
+        }
+        button.classList.add("active");
+        status.textContent = chord.label;
+        const key = event.pointerId ?? `${Date.now()}-${Math.random()}`;
+        const bundle = startChord(chord);
+        activePads.set(key, { button, bundle });
+        applyOctaveToBundle(bundle);
+        recordLoopEvent(chord.id);
+      };
+
+      const deactivate = (event) => {
+        const key = event.pointerId ?? null;
+        const active = key !== null ? activePads.get(key) : null;
+        if (active) {
+          stopVoiceBundle(active.bundle);
+          activePads.delete(key);
+        }
+        const stillHeld = Array.from(activePads.values()).some((entry) => entry.button === button);
+        if (!stillHeld) {
+          button.classList.remove("active");
+        }
+      };
+
+      button.addEventListener("pointerdown", activate);
+      button.addEventListener("pointerup", deactivate);
+      button.addEventListener("pointerleave", deactivate);
+      button.addEventListener("pointercancel", deactivate);
+    }
+
+    function renderPads() {
+      chords.forEach((chord, index) => {
+        const button = document.createElement("button");
+        button.className = "pad";
+        button.style.backgroundImage = `${voices[index % voices.length].color}, linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.05))`;
+        button.innerHTML = `
+          <div class="pad-key">${chord.key}</div>
+          <div class="pad-title">${chord.label}</div>
+          <div class="pad-notes">${chord.notes.map(noteName).join(" • ")}</div>
+        `;
+        bindPadPress(button, chord);
+        padsRoot.appendChild(button);
+      });
+    }
+
+    function renderDrumPads() {
+      const drumPads = [
+        { id: "kick", label: "Kick", notes: "boom" },
+        { id: "snare", label: "Snare", notes: "snap" },
+        { id: "openHat", label: "Hat", notes: "tss" }
+      ];
+
+      drumPads.forEach((drum) => {
+        const button = document.createElement("button");
+        button.className = "pad";
+        button.innerHTML = `
+          <div class="pad-key">Drum</div>
+          <div class="pad-title">${drum.label}</div>
+          <div class="pad-notes">${drum.notes}</div>
+        `;
+
+        const activate = async (event) => {
+          event.preventDefault();
+          await ensureAudio();
+          if (button.setPointerCapture && event.pointerId !== undefined) {
+            button.setPointerCapture(event.pointerId);
+          }
+          button.classList.add("active");
+          const key = event.pointerId ?? `${Date.now()}-${Math.random()}`;
+          activeDrums.set(key, { button });
+          triggerDrum(drum.id);
+          status.textContent = drum.label.toLowerCase();
+        };
+
+        const deactivate = (event) => {
+          const key = event.pointerId ?? null;
+          if (key !== null) {
+            activeDrums.delete(key);
+          }
+          const stillHeld = Array.from(activeDrums.values()).some((entry) => entry.button === button);
+          if (!stillHeld) {
+            button.classList.remove("active");
+          }
+        };
+
+        button.addEventListener("pointerdown", activate);
+        button.addEventListener("pointerup", deactivate);
+        button.addEventListener("pointerleave", deactivate);
+        button.addEventListener("pointercancel", deactivate);
+        drumPadsRoot.appendChild(button);
+      });
+    }
+
+    driveInput.addEventListener("input", async (event) => {
+      await ensureAudio();
+      setDrive(Number(event.target.value));
+    });
+    tempoInput.addEventListener("input", async (event) => {
+      await ensureAudio();
+      tempoBpm = Number(event.target.value);
+      tempoValue.textContent = `${tempoBpm} BPM`;
+      status.textContent = `${tempoBpm} bpm`;
+      if (loopPlaying) {
+        scheduleLoop();
+      }
+    });
+
+    voiceFader.addEventListener("input", async (event) => {
+      await ensureAudio();
+      setVoiceMorph(Number(event.target.value) / 100);
+    });
+    toneFader.addEventListener("input", async (event) => {
+      await ensureAudio();
+      setToneMorph(Number(event.target.value) / 100);
+    });
+    octaveFader.addEventListener("input", () => {
+      setOctaveShift(Number(event.target.value) / 10);
+    });
+    loopLengthWheel.addEventListener("input", (event) => {
+      setLoopLength(loopLengths[Number(event.target.value)]);
+    });
+    loopArmButton.addEventListener("click", toggleLoopRecord);
+    loopClearButton.addEventListener("click", () => {
+      stopLoopPlayback();
+      loopArmed = false;
+      loopEvents = [];
+      loopStartTime = 0;
+      loopArmButton.classList.remove("active");
+      setButtonVisual(loopArmButton, "◉", "Rec");
+      status.textContent = "loop cleared";
+    });
+    audioRecordButton.addEventListener("click", toggleAudioRecord);
+    drumToggleButton.addEventListener("click", async () => {
+      await ensureAudio();
+      toggleDrums();
+    });
+
+    setVoiceMorph(0);
+    setToneMorph(0);
+    setOctaveShift(0);
+    setButtonVisual(loopArmButton, "◉", "Rec");
+    setButtonVisual(drumToggleButton, "◌", "Drum");
+    setButtonVisual(audioRecordButton, "◎", "Audio");
+    setButtonVisual(loopClearButton, "✕", "Clear");
+    loopLengthWheel.value = String(loopLengths.indexOf(loopLengthBeats));
+    applyLoopLength(loopLengthBeats);
+    renderPads();
+    renderDrumPads();
+    tempoValue.textContent = `${tempoBpm} BPM`;
+  </script>
+</body>
+</html>

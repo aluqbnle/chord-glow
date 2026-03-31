@@ -49,6 +49,7 @@
       grid-template-columns: 1fr;
       grid-template-areas:
         "title"
+        "quickbar"
         "settings"
         "chords"
         "drums";
@@ -106,6 +107,30 @@
       gap: 10px;
     }
 
+    .quick-bar {
+      grid-area: quickbar;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .quick-bar button {
+      border: 0;
+      border-radius: 18px;
+      padding: 13px 8px;
+      color: var(--text);
+      font: inherit;
+      background: rgba(255, 255, 255, 0.08);
+      display: grid;
+      justify-items: center;
+      gap: 4px;
+      min-height: 52px;
+    }
+
+    .quick-bar button.active {
+      background: linear-gradient(135deg, rgba(255, 179, 107, 0.36), rgba(134, 217, 255, 0.24));
+    }
+
     .key-row {
       display: flex;
       gap: 6px;
@@ -155,6 +180,39 @@
       gap: 6px;
     }
 
+    .chord-strip {
+      display: grid;
+      gap: 6px;
+      padding: 10px 10px 6px;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+      margin-bottom: 4px;
+    }
+
+    .chord-strip-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+    }
+
+    #chord-morph {
+      width: 100%;
+      accent-color: var(--accent);
+      height: 6px;
+    }
+
+    .chord-strip-markers {
+      display: flex;
+      justify-content: space-between;
+      padding: 0 2px;
+    }
+
+    .chord-strip-markers span {
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 0.04em;
+    }
+
     .section-label {
       font-size: 11px;
       letter-spacing: 0.12em;
@@ -192,7 +250,7 @@
 
     .transport {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: 1fr 1fr;
       gap: 8px;
     }
 
@@ -352,6 +410,11 @@
         padding: 10px 6px;
       }
 
+      .quick-bar button {
+        min-height: 46px;
+        padding: 10px 6px;
+      }
+
       .pad {
         min-height: 100px;
       }
@@ -395,6 +458,17 @@
       <button id="settings-toggle" class="settings-btn" type="button">⚙ Settings</button>
     </header>
 
+    <div class="quick-bar">
+      <button id="loop-arm" aria-label="Loop Record">
+        <span class="transport-icon">◉</span>
+        <span class="transport-label">Rec</span>
+      </button>
+      <button id="drum-toggle" aria-label="Drums">
+        <span class="transport-icon">◌</span>
+        <span class="transport-label">Drum</span>
+      </button>
+    </div>
+
     <section class="controls" id="settings-panel" style="display: none;">
       <div class="settings-stack">
         <div class="setting-row">
@@ -437,14 +511,6 @@
       <div>
         <div class="section-label">Transport</div>
         <div class="transport">
-          <button id="loop-arm" aria-label="Loop Record">
-            <span class="transport-icon">◉</span>
-            <span class="transport-label">Rec</span>
-          </button>
-          <button id="drum-toggle" aria-label="Drums">
-            <span class="transport-icon">◌</span>
-            <span class="transport-label">Drum</span>
-          </button>
           <button id="audio-record" aria-label="Audio Record">
             <span class="transport-icon">◎</span>
             <span class="transport-label">Audio</span>
@@ -474,6 +540,16 @@
     </section>
 
     <section class="pad-section" id="chord-section">
+      <div class="chord-strip">
+        <div class="chord-strip-header">
+          <span class="section-label">Chord Glide</span>
+          <span id="chord-morph-label">Cmaj7</span>
+        </div>
+        <input id="chord-morph" type="range"
+          min="0" max="500" step="1" value="0"
+          style="touch-action: none;">
+        <div class="chord-strip-markers" id="chord-strip-markers"></div>
+      </div>
       <div class="section-head">
         <div class="section-label">Chord Pads</div>
         <div class="section-label">Hold for sustain · Multi-touch OK</div>
@@ -584,6 +660,8 @@
     ];
 
     let voiceMorph = 0;
+    let chordMorph = 0;
+    let chordMorphBundle = null;
     let toneMorph = 0;
     let octaveShift = 0;
     let rootShift = 0;
@@ -652,6 +730,20 @@
         filter: lerp(a.filter, b.filter, mix),
         vibrato: lerp(a.vibrato, b.vibrato, mix)
       };
+    }
+
+    function getChordProfile(morph) {
+      const baseIndex = Math.min(chords.length - 1, Math.floor(morph));
+      const nextIndex = Math.min(chords.length - 1, baseIndex + 1);
+      const mix = Math.min(1, Math.max(0, morph - baseIndex));
+      const a = chords[baseIndex];
+      const b = chords[nextIndex];
+      const notes = a.notes.map((midi, i) => {
+        const target = b.notes[i] ?? midi;
+        return midi + ((target - midi) * mix);
+      });
+      const label = mix < 0.08 ? a.label : mix > 0.92 ? b.label : `${a.label} → ${b.label}`;
+      return { notes, label, baseIndex, mix };
     }
 
     function getToneProfile() {
@@ -883,6 +975,72 @@
       });
 
       return bundle;
+    }
+
+    function startMorphChord(floatNotes) {
+      if (!audioContext) return null;
+      const voice = getVoiceProfile();
+      const tone = getToneProfile();
+      const now = audioContext.currentTime;
+      lowpass.frequency.cancelScheduledValues(now);
+      lowpass.frequency.linearRampToValueAtTime(tone.filter + voice.filter * 0.35, now + 0.03);
+      const bundle = { oscillators: [], gains: [], lfos: [], release: voice.release, stopped: false };
+
+      floatNotes.forEach((floatMidi, noteIndex) => {
+        voice.waves.forEach((wave, layerIndex) => {
+          const osc = audioContext.createOscillator();
+          const gain = audioContext.createGain();
+          const pan = audioContext.createStereoPanner();
+          const lfo = audioContext.createOscillator();
+          const lfoGain = audioContext.createGain();
+
+          osc.type = wave;
+          osc.frequency.value = midiToHz(floatMidi + octaveShift + rootShift);
+          osc.detune.value = voice.detune[layerIndex] + noteIndex * 1.5;
+
+          lfo.type = "sine";
+          lfo.frequency.value = 4.3 + layerIndex * 0.4;
+          lfoGain.gain.value = voice.vibrato;
+          lfo.connect(lfoGain);
+          lfoGain.connect(osc.detune);
+
+          pan.pan.value = ((noteIndex / floatNotes.length) - 0.4) * 0.8;
+
+          gain.gain.setValueAtTime(0.0001, now);
+          gain.gain.exponentialRampToValueAtTime(0.12 / (layerIndex + 1), now + voice.attack);
+
+          osc.connect(gain);
+          gain.connect(pan);
+          pan.connect(lowpass);
+
+          osc.start(now);
+          lfo.start(now);
+          bundle.oscillators.push({ osc, midi: floatMidi });
+          bundle.gains.push(gain);
+          bundle.lfos.push(lfo);
+        });
+      });
+      return bundle;
+    }
+
+    function updateMorphChordFrequencies(bundle, floatNotes) {
+      if (!bundle || bundle.stopped || !audioContext) return;
+      const now = audioContext.currentTime;
+      let oscIndex = 0;
+      floatNotes.forEach((floatMidi) => {
+        const voiceProfile = getVoiceProfile();
+        voiceProfile.waves.forEach(() => {
+          const item = bundle.oscillators[oscIndex];
+          if (item) {
+            item.midi = floatMidi;
+            item.osc.frequency.setTargetAtTime(
+              midiToHz(floatMidi + octaveShift + rootShift),
+              now, 0.04
+            );
+          }
+          oscIndex++;
+        });
+      });
     }
 
     function playTap(chord) {
@@ -1190,6 +1348,7 @@
       octaveValue.textContent = value === 0 ? "Base" : `${value > 0 ? "+" : ""}${value.toFixed(1)}`;
       octaveLabel.textContent = `${Math.round(value * 10) / 10} st`;
       activePads.forEach((entry) => applyOctaveToBundle(entry.bundle));
+      applyOctaveToBundle(chordMorphBundle);
       status.textContent = "pitch glide";
     }
 
@@ -1199,6 +1358,7 @@
         button.classList.toggle("active", index === value);
       });
       activePads.forEach((entry) => applyOctaveToBundle(entry.bundle));
+      applyOctaveToBundle(chordMorphBundle);
       status.textContent = `key ${rootNames[value]}`;
     }
 
@@ -1404,8 +1564,49 @@
     renderKeyButtons();
     renderPads();
     renderDrumPads();
+    const markersEl = document.getElementById("chord-strip-markers");
+    chords.forEach((chord) => {
+      const span = document.createElement("span");
+      span.textContent = chord.label;
+      markersEl.appendChild(span);
+    });
     setRootShift(0);
     updateTempoDisplay();
+
+    const chordMorphSlider = document.getElementById("chord-morph");
+    const chordMorphLabel = document.getElementById("chord-morph-label");
+
+    chordMorphSlider.addEventListener("pointerdown", async (event) => {
+      event.preventDefault();
+      await ensureAudio();
+      if (navigator.vibrate) navigator.vibrate(18);
+      chordMorph = Number(chordMorphSlider.value) / 100;
+      const profile = getChordProfile(chordMorph);
+      chordMorphLabel.textContent = profile.label;
+      if (chordMorphBundle) stopVoiceBundle(chordMorphBundle);
+      chordMorphBundle = startMorphChord(profile.notes);
+      status.textContent = profile.label;
+    });
+
+    chordMorphSlider.addEventListener("input", () => {
+      chordMorph = Number(chordMorphSlider.value) / 100;
+      const profile = getChordProfile(chordMorph);
+      chordMorphLabel.textContent = profile.label;
+      status.textContent = profile.label;
+      if (chordMorphBundle && !chordMorphBundle.stopped) {
+        updateMorphChordFrequencies(chordMorphBundle, profile.notes);
+      }
+    });
+
+    const stopMorphChord = () => {
+      if (chordMorphBundle) {
+        stopVoiceBundle(chordMorphBundle);
+        chordMorphBundle = null;
+      }
+    };
+    chordMorphSlider.addEventListener("pointerup", stopMorphChord);
+    chordMorphSlider.addEventListener("pointerleave", stopMorphChord);
+    chordMorphSlider.addEventListener("pointercancel", stopMorphChord);
 
     document.getElementById('settings-toggle').addEventListener('click', () => {
       const panel = document.getElementById('settings-panel');

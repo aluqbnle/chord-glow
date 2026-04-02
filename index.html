@@ -25,6 +25,10 @@
       user-select: none;
     }
 
+    html, body {
+      touch-action: pan-y;
+    }
+
     body {
       margin: 0;
       min-height: 100vh;
@@ -40,6 +44,7 @@
     .app {
       width: min(100%, 390px);
       min-height: 100dvh;
+      touch-action: pan-y;
       margin: 0 auto;
       padding:
         max(10px, env(safe-area-inset-top))
@@ -126,6 +131,16 @@
       justify-items: center;
       gap: 4px;
       min-height: 52px;
+    }
+
+    .quick-bar button,
+    .transport button,
+    .settings-btn,
+    .mode-tab,
+    .tension-chip,
+    .xy-chip,
+    .key-button {
+      touch-action: manipulation;
     }
 
     .quick-bar button.active {
@@ -819,6 +834,17 @@
       return a + ((b - a) * t);
     }
 
+    function getBestMimeType() {
+      const candidates = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg"];
+      return candidates.find((t) => {
+        try {
+          return MediaRecorder.isTypeSupported(t);
+        } catch (e) {
+          return false;
+        }
+      }) || "";
+    }
+
     function getVoiceProfile() {
       const baseIndex = Math.min(voices.length - 1, Math.floor(voiceMorph));
       const nextIndex = Math.min(voices.length - 1, baseIndex + 1);
@@ -900,7 +926,7 @@
 
     async function ensureAudio() {
       if (!audioContext) {
-        audioContext = new AudioContext();
+        audioContext = new AudioContext({ latencyHint: "interactive" });
         masterGain = audioContext.createGain();
         dryGain = audioContext.createGain();
         lowpass = audioContext.createBiquadFilter();
@@ -1264,20 +1290,43 @@
       }
 
       audioChunks = [];
-      mediaRecorder = new MediaRecorder(mediaDest.stream);
+      const mimeType = getBestMimeType();
+      mediaRecorder = mimeType
+        ? new MediaRecorder(mediaDest.stream, { mimeType })
+        : new MediaRecorder(mediaDest.stream);
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size) {
           audioChunks.push(event.data);
         }
       };
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+      mediaRecorder.onstop = async () => {
+        const mimeType = getBestMimeType();
+        const blob = new Blob(audioChunks, { type: mimeType || "audio/webm" });
+        const ext = mimeType.includes("mp4") ? "m4a" : mimeType.includes("ogg") ? "ogg" : "webm";
+        const fileName = `chord-glow-${Date.now()}.${ext}`;
+
+        if (navigator.share && navigator.canShare) {
+          try {
+            const file = new File([blob], fileName, { type: mimeType });
+            if (navigator.canShare({ files: [file] })) {
+              await navigator.share({ files: [file], title: "Chord Glow" });
+              status.textContent = "shared";
+              return;
+            }
+          } catch (e) {
+            if (e.name !== "AbortError") console.warn("share failed", e);
+          }
+        }
+
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = `chord-glow-${Date.now()}.webm`;
+        link.download = fileName;
+        document.body.appendChild(link);
         link.click();
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+        status.textContent = "saved";
       };
       mediaRecorder.start();
       audioRecordButton.classList.add("active");
@@ -1654,7 +1703,8 @@
       await ensureAudio();
       setDrive(Number(event.target.value));
     });
-    tempoTapButton.addEventListener("click", async () => {
+    tempoTapButton.addEventListener("pointerdown", async (e) => {
+      e.preventDefault();
       await ensureAudio();
       handleTapTempo();
     });
@@ -1673,8 +1723,12 @@
     loopLengthWheel.addEventListener("input", (event) => {
       setLoopLength(loopLengths[Number(event.target.value)]);
     });
-    loopArmButton.addEventListener("click", toggleLoopRecord);
-    loopClearButton.addEventListener("click", () => {
+    loopArmButton.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      toggleLoopRecord();
+    });
+    loopClearButton.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
       stopLoopPlayback();
       loopArmed = false;
       loopEvents = [];
@@ -1683,8 +1737,12 @@
       setButtonVisual(loopArmButton, "◉", "Rec");
       status.textContent = "loop cleared";
     });
-    audioRecordButton.addEventListener("click", toggleAudioRecord);
-    drumToggleButton.addEventListener("click", async () => {
+    audioRecordButton.addEventListener("pointerdown", async (e) => {
+      e.preventDefault();
+      await toggleAudioRecord();
+    });
+    drumToggleButton.addEventListener("pointerdown", async (e) => {
+      e.preventDefault();
       await ensureAudio();
       toggleDrums();
     });
@@ -1728,9 +1786,9 @@
     const chordMorphSlider = document.getElementById("chord-morph");
     const chordMorphLabel = document.getElementById("chord-morph-label");
 
-    chordMorphSlider.addEventListener("pointerdown", async (event) => {
+    chordMorphSlider.addEventListener("pointerdown", (event) => {
       event.preventDefault();
-      await ensureAudio();
+      if (!audioContext || audioContext.state !== "running") return;
       if (navigator.vibrate) navigator.vibrate(18);
       chordMorph = Number(chordMorphSlider.value) / 100;
       const profile = getChordProfile(chordMorph);
@@ -2005,6 +2063,20 @@
 
     renderXYControls();
     initXYPad();
+
+    document.addEventListener("gesturestart", (e) => e.preventDefault(), { passive: false });
+    document.addEventListener("gesturechange", (e) => e.preventDefault(), { passive: false });
+
+    document.addEventListener("touchstart", (e) => {
+      if (e.touches.length > 1) e.preventDefault();
+    }, { passive: false });
+
+    let _lastTap = 0;
+    document.addEventListener("touchend", (e) => {
+      const now = Date.now();
+      if (now - _lastTap < 300) e.preventDefault();
+      _lastTap = now;
+    }, { passive: false });
   </script>
 </body>
 </html>

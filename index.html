@@ -29,6 +29,7 @@
       margin: 0;
       min-height: 100vh;
       font-family: "Avenir Next", "Helvetica Neue", sans-serif;
+      overscroll-behavior: none;
       background:
         radial-gradient(circle at top, rgba(255, 179, 107, 0.22), transparent 32%),
         radial-gradient(circle at 20% 80%, rgba(134, 217, 255, 0.18), transparent 30%),
@@ -519,13 +520,15 @@
     .mode-tab{border:0;border-radius:999px;padding:6px 16px;font:inherit;font-size:13px;color:var(--muted);background:transparent;cursor:pointer}
     .mode-tab.active{background:rgba(255,255,255,0.14);color:var(--text)}
     #xy-mode{grid-area:xy;display:none;flex-direction:column;gap:8px}
-    #xy-mode.visible{display:flex}
+    #xy-mode.visible{display:flex;min-height:calc(100dvh - 130px)}
+    #xy-mode.visible,
+    #xy-mode.visible .xy-pad-wrap{touch-action:none;overscroll-behavior:none}
     .xy-top-controls{display:grid;gap:6px}
     .xy-scale-row,.xy-y-row{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
     .xy-scale-row::-webkit-scrollbar,.xy-y-row::-webkit-scrollbar{display:none}
     .xy-chip{flex:0 0 auto;border:1px solid rgba(255,255,255,0.1);border-radius:999px;padding:7px 14px;min-height:36px;background:rgba(255,255,255,0.06);color:var(--muted);font:inherit;font-size:13px;white-space:nowrap;cursor:pointer}
     .xy-chip.active{background:rgba(255,179,107,0.22);border-color:rgba(255,179,107,0.5);color:var(--text)}
-    .xy-pad-wrap{border-radius:20px;overflow:hidden;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.07);flex:1;min-height:300px;position:relative}
+    .xy-pad-wrap{border-radius:20px;overflow:hidden;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.07);flex:1;min-height:300px;height:0;position:relative}
     #xy-canvas{width:100%;height:100%;display:block;touch-action:none}
   </style>
 </head>
@@ -1769,6 +1772,7 @@
     const yParams = ['Filter','Reverb','Mod'];
     let currentScale = 'Pentatonic';
     let currentYParam = 'Filter';
+    let xyRafId = null;
     const xyTouches = new Map();
     const XY_OCTAVES = 2;
     const XY_BASE_OCTAVE = 4;
@@ -1884,16 +1888,18 @@
         ctx.fillStyle = 'rgba(255,179,107,0.9)';
         ctx.beginPath(); ctx.arc(t.x, t.y, 3, 0, Math.PI * 2); ctx.fill();
       });
-      if (document.getElementById('xy-mode').classList.contains('visible')) requestAnimationFrame(drawXYPad);
+      if (document.getElementById('xy-mode').classList.contains('visible')) xyRafId = requestAnimationFrame(drawXYPad);
     }
 
     function initXYPad() {
       const canvas = document.getElementById('xy-canvas');
-      canvas.addEventListener('pointerdown', async (e) => {
+      canvas.addEventListener('pointerdown', (e) => {
         e.preventDefault();
+        e.stopPropagation();
+        if (!audioContext || audioContext.state !== 'running') return;
         canvas.setPointerCapture(e.pointerId);
-        await ensureAudio();
         const rect = canvas.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return;
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
         const xNorm = x / rect.width;
@@ -1903,9 +1909,11 @@
         applyYAxis(yNorm);
         const bundle = startXYNote(midi);
         xyTouches.set(e.pointerId, { x, y, bundle, midi });
-        status.textContent = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'][midi % 12];
+        const NOTE_NAMES_LOCAL = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+        status.textContent = NOTE_NAMES_LOCAL[midi % 12];
       });
       canvas.addEventListener('pointermove', (e) => {
+        e.stopPropagation();
         if (!xyTouches.has(e.pointerId)) return;
         const rect = canvas.getBoundingClientRect();
         const x = e.clientX - rect.left;
@@ -1923,6 +1931,7 @@
         }
       });
       const endTouch = (e) => {
+        e.stopPropagation();
         const touch = xyTouches.get(e.pointerId);
         if (touch) {
           stopVoiceBundle(touch.bundle);
@@ -1967,17 +1976,22 @@
         chordsEls.forEach((el) => { if (el) el.style.display = 'none'; });
         xyEl.classList.add('visible');
         xyEl.style.display = 'flex';
+        document.body.style.overscrollBehavior = 'none';
         document.getElementById('tab-xy').classList.add('active');
         document.getElementById('tab-chords').classList.remove('active');
         settingsEl.style.display = 'none';
         document.getElementById('settings-toggle').classList.remove('active');
-        requestAnimationFrame(drawXYPad);
+        ensureAudio().catch(() => {});
+        if (xyRafId) { cancelAnimationFrame(xyRafId); xyRafId = null; }
+        xyRafId = requestAnimationFrame(drawXYPad);
       } else {
         chordsEls.forEach((el) => { if (el) el.style.display = ''; });
         xyEl.classList.remove('visible');
         xyEl.style.display = 'none';
+        document.body.style.overscrollBehavior = '';
         document.getElementById('tab-chords').classList.add('active');
         document.getElementById('tab-xy').classList.remove('active');
+        if (xyRafId) { cancelAnimationFrame(xyRafId); xyRafId = null; }
         xyTouches.forEach((t) => stopVoiceBundle(t.bundle));
         xyTouches.clear();
       }
@@ -1986,7 +2000,7 @@
     document.getElementById('tab-chords').addEventListener('click', () => switchMode('chords'));
     document.getElementById('tab-xy').addEventListener('click', () => switchMode('xy'));
     window.addEventListener('resize', () => {
-      if (document.getElementById('xy-mode').classList.contains('visible')) requestAnimationFrame(drawXYPad);
+      if (document.getElementById('xy-mode').classList.contains('visible')) xyRafId = requestAnimationFrame(drawXYPad);
     });
 
     renderXYControls();

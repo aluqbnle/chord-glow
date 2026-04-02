@@ -52,7 +52,8 @@
         "quickbar"
         "settings"
         "chords"
-        "drums";
+        "drums"
+        "xy";
       gap: 10px;
       align-items: start;
     }
@@ -70,7 +71,6 @@
     .title-bar {
       grid-area: title;
       display: flex;
-      justify-content: space-between;
       align-items: center;
       gap: 8px;
       padding: 8px 12px;
@@ -514,17 +514,33 @@
     .tap-button:active {
       transform: scale(0.98);
     }
+
+    .mode-tabs{display:flex;gap:4px;background:rgba(255,255,255,0.07);border-radius:999px;padding:3px}
+    .mode-tab{border:0;border-radius:999px;padding:6px 16px;font:inherit;font-size:13px;color:var(--muted);background:transparent;cursor:pointer}
+    .mode-tab.active{background:rgba(255,255,255,0.14);color:var(--text)}
+    #xy-mode{grid-area:xy;display:none;flex-direction:column;gap:8px}
+    #xy-mode.visible{display:flex}
+    .xy-top-controls{display:grid;gap:6px}
+    .xy-scale-row,.xy-y-row{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+    .xy-scale-row::-webkit-scrollbar,.xy-y-row::-webkit-scrollbar{display:none}
+    .xy-chip{flex:0 0 auto;border:1px solid rgba(255,255,255,0.1);border-radius:999px;padding:7px 14px;min-height:36px;background:rgba(255,255,255,0.06);color:var(--muted);font:inherit;font-size:13px;white-space:nowrap;cursor:pointer}
+    .xy-chip.active{background:rgba(255,179,107,0.22);border-color:rgba(255,179,107,0.5);color:var(--text)}
+    .xy-pad-wrap{border-radius:20px;overflow:hidden;background:rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.07);flex:1;min-height:300px;position:relative}
+    #xy-canvas{width:100%;height:100%;display:block;touch-action:none}
   </style>
 </head>
 <body>
   <main class="app">
     <header class="title-bar">
-      <span class="app-title">Chord Glow</span>
+      <div class="mode-tabs">
+        <button class="mode-tab active" id="tab-chords">Chords</button>
+        <button class="mode-tab" id="tab-xy">XY Pad</button>
+      </div>
       <span class="pill" id="status">standby</span>
-      <button id="settings-toggle" class="settings-btn" type="button">⚙ Settings</button>
+      <button id="settings-toggle" class="settings-btn" type="button">⚙</button>
     </header>
 
-    <div class="quick-bar">
+    <div class="quick-bar" id="quick-bar">
       <button id="loop-arm" aria-label="Loop Record">
         <span class="transport-icon">◉</span>
         <span class="transport-label">Rec</span>
@@ -635,6 +651,16 @@
         <div class="section-label">Drums</div>
       </div>
       <div class="pads drums" id="drum-pads"></div>
+    </section>
+
+    <section id="xy-mode" style="display:none">
+      <div class="xy-top-controls">
+        <div class="xy-scale-row" id="xy-scale-row"></div>
+        <div class="xy-y-row" id="xy-y-row"></div>
+      </div>
+      <div class="xy-pad-wrap">
+        <canvas id="xy-canvas"></canvas>
+      </div>
     </section>
   </main>
 
@@ -1738,6 +1764,233 @@
       panel.style.display = isOpen ? 'none' : 'grid';
       btn.classList.toggle('active', !isOpen);
     });
+
+    const scales = {'Major':[0,2,4,5,7,9,11],'Minor':[0,2,3,5,7,8,10],'Pentatonic':[0,2,4,7,9],'Blues':[0,3,5,6,7,10],'Dorian':[0,2,3,5,7,9,10],'Chromatic':[0,1,2,3,4,5,6,7,8,9,10,11]};
+    const yParams = ['Filter','Reverb','Mod'];
+    let currentScale = 'Pentatonic';
+    let currentYParam = 'Filter';
+    const xyTouches = new Map();
+    const XY_OCTAVES = 2;
+    const XY_BASE_OCTAVE = 4;
+
+    function startXYNote(midi) {
+      if (!audioContext) return null;
+      const voice = getVoiceProfile();
+      const now = audioContext.currentTime;
+      const bundle = { oscillators: [], gains: [], lfos: [], release: voice.release * 0.6, stopped: false };
+      voice.waves.slice(0, 2).forEach((wave, li) => {
+        const osc = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        const lfo = audioContext.createOscillator();
+        const lfoGain = audioContext.createGain();
+        osc.type = wave;
+        osc.frequency.value = midiToHz(midi);
+        osc.detune.value = voice.detune[li];
+        lfo.type = 'sine';
+        lfo.frequency.value = 4.5 + li * 0.5;
+        lfoGain.gain.value = voice.vibrato * 0.6;
+        lfo.connect(lfoGain);
+        lfoGain.connect(osc.detune);
+        gain.gain.setValueAtTime(0.0001, now);
+        gain.gain.exponentialRampToValueAtTime(0.18 / (li + 1), now + voice.attack);
+        osc.connect(gain);
+        gain.connect(lowpass);
+        osc.start(now);
+        lfo.start(now);
+        bundle.oscillators.push({ osc, midi });
+        bundle.gains.push(gain);
+        bundle.lfos.push(lfo);
+      });
+      return bundle;
+    }
+
+    function glideXYNote(bundle, newMidi) {
+      if (!bundle || bundle.stopped || !audioContext) return;
+      const now = audioContext.currentTime;
+      bundle.oscillators.forEach((item) => {
+        item.osc.frequency.setTargetAtTime(midiToHz(newMidi), now, 0.025);
+        item.midi = newMidi;
+      });
+    }
+
+    function applyYAxis(yNorm) {
+      if (!audioContext) return;
+      const now = audioContext.currentTime;
+      const y = Math.max(0, Math.min(1, yNorm));
+      if (currentYParam === 'Filter') {
+        const freq = 180 + Math.pow(y, 1.8) * 11000;
+        lowpass.frequency.setTargetAtTime(freq, now, 0.03);
+      } else if (currentYParam === 'Reverb') {
+        wetGain.gain.setTargetAtTime(y * 0.65, now, 0.05);
+      } else if (currentYParam === 'Mod') {
+        xyTouches.forEach((t) => {
+          if (t.bundle) t.bundle.lfos.forEach((lfo) => lfo.frequency.setTargetAtTime(0.5 + y * 9, now, 0.03));
+        });
+      }
+    }
+
+    function xToMidi(xNorm) {
+      const scale = scales[currentScale];
+      const totalSteps = scale.length * XY_OCTAVES;
+      const stepIndex = Math.floor(Math.max(0, Math.min(0.9999, xNorm)) * totalSteps);
+      const octave = Math.floor(stepIndex / scale.length);
+      const degree = stepIndex % scale.length;
+      return (XY_BASE_OCTAVE * 12) + rootShift + (octave * 12) + scale[degree];
+    }
+
+    function drawXYPad() {
+      const canvas = document.getElementById('xy-canvas');
+      if (!canvas || !canvas.parentElement) return;
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.parentElement.getBoundingClientRect();
+      const W = rect.width;
+      const H = rect.height;
+      if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
+        canvas.width = Math.round(W * dpr);
+        canvas.height = Math.round(H * dpr);
+      }
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, W, H);
+      const scale = scales[currentScale];
+      const totalSteps = scale.length * XY_OCTAVES;
+      for (let i = 0; i <= totalSteps; i++) {
+        const x = (i / totalSteps) * W;
+        const isOctave = i % scale.length === 0;
+        ctx.strokeStyle = isOctave ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.06)';
+        ctx.lineWidth = isOctave ? 1.5 : 1;
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+        if (i < totalSteps) {
+          const midi = xToMidi((i + 0.5) / totalSteps);
+          const name = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'][midi % 12];
+          ctx.fillStyle = isOctave ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.22)';
+          ctx.font = `${isOctave ? '600' : '400'} 10px system-ui`;
+          ctx.textAlign = 'center';
+          ctx.fillText(name, x + W / totalSteps / 2, H - 8);
+        }
+      }
+      ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, H / 2); ctx.lineTo(W, H / 2); ctx.stroke();
+      xyTouches.forEach((t) => {
+        const grad = ctx.createRadialGradient(t.x, t.y, 0, t.x, t.y, 72);
+        grad.addColorStop(0, 'rgba(255,179,107,0.55)');
+        grad.addColorStop(0.4, 'rgba(134,217,255,0.22)');
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath(); ctx.arc(t.x, t.y, 72, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.92)';
+        ctx.beginPath(); ctx.arc(t.x, t.y, 7, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'rgba(255,179,107,0.9)';
+        ctx.beginPath(); ctx.arc(t.x, t.y, 3, 0, Math.PI * 2); ctx.fill();
+      });
+      if (document.getElementById('xy-mode').classList.contains('visible')) requestAnimationFrame(drawXYPad);
+    }
+
+    function initXYPad() {
+      const canvas = document.getElementById('xy-canvas');
+      canvas.addEventListener('pointerdown', async (e) => {
+        e.preventDefault();
+        canvas.setPointerCapture(e.pointerId);
+        await ensureAudio();
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const xNorm = x / rect.width;
+        const yNorm = 1 - y / rect.height;
+        const midi = xToMidi(xNorm);
+        if (navigator.vibrate) navigator.vibrate(12);
+        applyYAxis(yNorm);
+        const bundle = startXYNote(midi);
+        xyTouches.set(e.pointerId, { x, y, bundle, midi });
+        status.textContent = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'][midi % 12];
+      });
+      canvas.addEventListener('pointermove', (e) => {
+        if (!xyTouches.has(e.pointerId)) return;
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const xNorm = x / rect.width;
+        const yNorm = 1 - y / rect.height;
+        const newMidi = xToMidi(xNorm);
+        const touch = xyTouches.get(e.pointerId);
+        touch.x = x; touch.y = y;
+        applyYAxis(yNorm);
+        if (newMidi !== touch.midi) {
+          glideXYNote(touch.bundle, newMidi);
+          touch.midi = newMidi;
+          status.textContent = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'][newMidi % 12];
+        }
+      });
+      const endTouch = (e) => {
+        const touch = xyTouches.get(e.pointerId);
+        if (touch) {
+          stopVoiceBundle(touch.bundle);
+          xyTouches.delete(e.pointerId);
+        }
+      };
+      canvas.addEventListener('pointerup', endTouch);
+      canvas.addEventListener('pointercancel', endTouch);
+      canvas.addEventListener('lostpointercapture', endTouch);
+    }
+
+    function renderXYControls() {
+      const scaleRow = document.getElementById('xy-scale-row');
+      Object.keys(scales).forEach((name) => {
+        const btn = document.createElement('button');
+        btn.className = `xy-chip${name === currentScale ? ' active' : ''}`;
+        btn.textContent = name;
+        btn.addEventListener('click', () => {
+          currentScale = name;
+          scaleRow.querySelectorAll('.xy-chip').forEach((b) => b.classList.toggle('active', b.textContent === name));
+        });
+        scaleRow.appendChild(btn);
+      });
+      const yRow = document.getElementById('xy-y-row');
+      yParams.forEach((p) => {
+        const btn = document.createElement('button');
+        btn.className = `xy-chip${p === currentYParam ? ' active' : ''}`;
+        btn.textContent = p;
+        btn.addEventListener('click', () => {
+          currentYParam = p;
+          yRow.querySelectorAll('.xy-chip').forEach((b) => b.classList.toggle('active', b.textContent === p));
+        });
+        yRow.appendChild(btn);
+      });
+    }
+
+    function switchMode(mode) {
+      const chordsEls = ['chord-section', 'drum-section', 'quick-bar'].map((id) => document.getElementById(id));
+      const xyEl = document.getElementById('xy-mode');
+      const settingsEl = document.getElementById('settings-panel');
+      if (mode === 'xy') {
+        chordsEls.forEach((el) => { if (el) el.style.display = 'none'; });
+        xyEl.classList.add('visible');
+        xyEl.style.display = 'flex';
+        document.getElementById('tab-xy').classList.add('active');
+        document.getElementById('tab-chords').classList.remove('active');
+        settingsEl.style.display = 'none';
+        document.getElementById('settings-toggle').classList.remove('active');
+        requestAnimationFrame(drawXYPad);
+      } else {
+        chordsEls.forEach((el) => { if (el) el.style.display = ''; });
+        xyEl.classList.remove('visible');
+        xyEl.style.display = 'none';
+        document.getElementById('tab-chords').classList.add('active');
+        document.getElementById('tab-xy').classList.remove('active');
+        xyTouches.forEach((t) => stopVoiceBundle(t.bundle));
+        xyTouches.clear();
+      }
+    }
+
+    document.getElementById('tab-chords').addEventListener('click', () => switchMode('chords'));
+    document.getElementById('tab-xy').addEventListener('click', () => switchMode('xy'));
+    window.addEventListener('resize', () => {
+      if (document.getElementById('xy-mode').classList.contains('visible')) requestAnimationFrame(drawXYPad);
+    });
+
+    renderXYControls();
+    initXYPad();
   </script>
 </body>
 </html>
